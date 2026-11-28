@@ -4,6 +4,9 @@ on:
   push:
     branches: [ main ]
 
+permissions:
+  contents: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -15,15 +18,15 @@ jobs:
       - name: Build release ZIP bundle
         run: zip -r stream-runner-build.zip index.html
 
-      # 2. Auto-push update directly to itch.io via Butler
+      # 2. Install official itch.io Butler CLI & push directly to itch.io
       - name: Push build to itch.io
-        uses: josephbmanley/butler-publish-itchio-action@v1
         env:
-          BUTLER_CREDENTIALS: ${{ secrets.BUTLER_API_KEY }}
-          CHANNEL: html5
-          ITCH_GAME: stream-runner
-          ITCH_USER: tarikoboh
-          PACKAGE: stream-runner-build.zip
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: |
+          curl -L -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip butler.zip
+          chmod +x butler
+          ./butler push stream-runner-build.zip tarikoboh/stream-runner:html5
 
       # 3. Attach ZIP to GitHub Releases for 1-click CrazyGames/YouTube upload
       - name: Publish GitHub Release Artifact
