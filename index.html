@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stream Runner | YouTube Playables</title>
+    <title>Stream Runner | Stream Arcade</title>
+    <!-- Official CrazyGames SDK v3 -->
+    <script src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>
     <style>
         /* Reset & mobile touch guards */
         * {
@@ -188,8 +190,12 @@
 
     <!-- START SCREEN -->
     <div id="screen-start" class="overlay">
-        <div class="hud-pill" style="margin-bottom:14px;font-size:11px;letter-spacing:0.5px;">
-            <span style="color:#ef4444;">▶</span> YOUTUBE PLAYABLES
+        <div class="hud-pill" style="margin-bottom:10px;font-size:11px;letter-spacing:0.5px;">
+            <span style="color:#ef4444;">▶</span> STREAM ARCADE
+        </div>
+
+        <!-- Remote Live-Ops Announcement Banner -->
+        <div id="liveops-banner" class="hidden" style="background:linear-gradient(90deg,rgba(239,68,68,0.22),rgba(245,158,11,0.25));border:1px solid rgba(251,191,36,0.45);color:#fde68a;font-size:11px;font-weight:800;padding:5px 14px;border-radius:999px;margin-bottom:12px;max-width:300px;">
         </div>
 
         <div class="emblem-pulse" style="width:84px;height:58px;background:linear-gradient(180deg,#ff1e1e,#cc0000);border-radius:16px;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 28px rgba(255,0,0,0.45);margin-bottom:16px;">
@@ -208,7 +214,7 @@
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:100%;max-width:300px;margin-bottom:22px;">
             <div class="card-box" style="padding:10px 6px;">
                 <div style="font-size:18px;margin-bottom:3px;">👍</div>
-                <div style="font-size:10px;font-weight:700;color:#7dd3fc;">+10K Views</div>
+                <div id="card-like-label" style="font-size:10px;font-weight:700;color:#7dd3fc;">+10K Views</div>
             </div>
             <div class="card-box" style="padding:10px 6px;">
                 <div style="font-size:18px;margin-bottom:3px;">⚡</div>
@@ -274,6 +280,57 @@
 (function() {
     'use strict';
 
+    // Remote Live-Ops Configuration (with instant built-in defaults)
+    const REMOTE_CONFIG_URL = 'https://juniorfalls.github.io/stream-runner/config.json';
+    const LIVE_CONFIG = {
+        announcementBanner: '',
+        baseSpeed: 220,
+        maxBonusSpeed: 230,
+        passiveViewsPerSec: 2700,
+        likeViews: 10000,
+        closeCallBonus: 5000,
+        crateJackpot: 50000,
+        viralBoostDuration: 7.5,
+        magnetDuration: 8.0,
+        crateSpawnChance: 0.11,
+        shieldSpawnChance: 0.09,
+        boostSpawnChance: 0.16
+    };
+
+    function fetchLiveOpsConfig() {
+        try {
+            if (typeof window.fetch !== 'function') return;
+            window.fetch(REMOTE_CONFIG_URL + '?t=' + Math.floor(Date.now() / 60000), { cache: 'no-store' })
+                .then(function(res) { return res.ok ? res.json() : null; })
+                .then(function(data) {
+                    if (!data || typeof data !== 'object') return;
+                    if (typeof data.baseSpeed === 'number') LIVE_CONFIG.baseSpeed = data.baseSpeed;
+                    if (typeof data.maxBonusSpeed === 'number') LIVE_CONFIG.maxBonusSpeed = data.maxBonusSpeed;
+                    if (typeof data.passiveViewsPerSec === 'number') LIVE_CONFIG.passiveViewsPerSec = data.passiveViewsPerSec;
+                    if (typeof data.likeViews === 'number') LIVE_CONFIG.likeViews = data.likeViews;
+                    if (typeof data.closeCallBonus === 'number') LIVE_CONFIG.closeCallBonus = data.closeCallBonus;
+                    if (typeof data.crateJackpot === 'number') LIVE_CONFIG.crateJackpot = data.crateJackpot;
+                    if (typeof data.viralBoostDuration === 'number') LIVE_CONFIG.viralBoostDuration = data.viralBoostDuration;
+                    if (typeof data.magnetDuration === 'number') LIVE_CONFIG.magnetDuration = data.magnetDuration;
+                    if (typeof data.crateSpawnChance === 'number') LIVE_CONFIG.crateSpawnChance = data.crateSpawnChance;
+                    if (typeof data.shieldSpawnChance === 'number') LIVE_CONFIG.shieldSpawnChance = data.shieldSpawnChance;
+                    if (typeof data.boostSpawnChance === 'number') LIVE_CONFIG.boostSpawnChance = data.boostSpawnChance;
+
+                    const likeLabel = document.getElementById('card-like-label');
+                    if (likeLabel) likeLabel.textContent = '+' + fmt(LIVE_CONFIG.likeViews) + ' Views';
+
+                    const bannerEl = document.getElementById('liveops-banner');
+                    if (bannerEl && typeof data.announcementBanner === 'string' && data.announcementBanner.trim().length > 0) {
+                        bannerEl.textContent = data.announcementBanner.trim();
+                        bannerEl.classList.remove('hidden');
+                    }
+                })
+                .catch(function() {
+                    // Offline or not yet hosted: silently keep defaults
+                });
+        } catch (err) {}
+    }
+
     // DOM references
     const canvas = document.getElementById('game-canvas');
     const ctx = canvas.getContext('2d');
@@ -299,6 +356,68 @@
     let bgmTimer = null;
     let bgmStep = 0;
 
+    // CrazyGames SDK v3 helper wrapper (safe fallback when hosted outside CrazyGames)
+    let cgReady = false;
+    function initCrazyGamesSDK() {
+        try {
+            if (window.CrazyGames && window.CrazyGames.SDK) {
+                window.CrazyGames.SDK.init().then(function() {
+                    cgReady = true;
+                }).catch(function() {});
+            }
+        } catch (err) {}
+    }
+
+    function cgGameplayStart() {
+        try {
+            if (cgReady && window.CrazyGames && window.CrazyGames.SDK) {
+                window.CrazyGames.SDK.game.gameplayStart();
+            }
+        } catch (err) {}
+    }
+
+    function cgGameplayStop() {
+        try {
+            if (cgReady && window.CrazyGames && window.CrazyGames.SDK) {
+                window.CrazyGames.SDK.game.gameplayStop();
+            }
+        } catch (err) {}
+    }
+
+    function cgHappytime() {
+        try {
+            if (cgReady && window.CrazyGames && window.CrazyGames.SDK) {
+                window.CrazyGames.SDK.game.happytime();
+            }
+        } catch (err) {}
+    }
+
+    function cgRequestMidgameAd(onComplete) {
+        try {
+            if (cgReady && window.CrazyGames && window.CrazyGames.SDK && window.CrazyGames.SDK.ad) {
+                const prevSound = soundOn;
+                if (prevSound) {
+                    soundOn = false;
+                    stopMusic();
+                }
+                window.CrazyGames.SDK.ad.requestAd('midgame', {
+                    adFinished: function() {
+                        soundOn = prevSound;
+                        if (onComplete) onComplete();
+                    },
+                    adError: function() {
+                        soundOn = prevSound;
+                        if (onComplete) onComplete();
+                    }
+                });
+                return;
+            }
+        } catch (err) {}
+        if (onComplete) onComplete();
+    }
+
+    initCrazyGamesSDK();
+
     function initAudioCtx() {
         try {
             if (!audioCtx) {
@@ -308,9 +427,7 @@
             if (audioCtx && audioCtx.state === 'suspended') {
                 audioCtx.resume();
             }
-        } catch (err) {
-            // Audio unavailable in restricted context
-        }
+        } catch (err) {}
     }
 
     function playTone(freq, type, dur, vol) {
@@ -328,9 +445,7 @@
             gain.connect(audioCtx.destination);
             osc.start();
             osc.stop(audioCtx.currentTime + (dur || 0.08));
-        } catch (err) {
-            // Ignore audio playback errors
-        }
+        } catch (err) {}
     }
 
     const BASS_SEQ = [110, 110, 130.81, 146.83, 164.81, 164.81, 146.83, 130.81];
@@ -375,7 +490,7 @@
         bestScore = 0;
     }
 
-    let speed = 220;
+    let speed = LIVE_CONFIG.baseSpeed;
     let spawnTimer = 0;
     let roadOffset = 0;
     let shake = 0;
@@ -445,7 +560,7 @@
                 const dy = player.y - it.y;
                 if (dy > 0 && dy < 130) {
                     it.dodged = true;
-                    const bonus = 5000 * multiplier;
+                    const bonus = LIVE_CONFIG.closeCallBonus * multiplier;
                     score += bonus;
                     playTone(880, 'triangle', 0.1, 0.09);
                     burst(player.x, player.y, '#34d399', 10);
@@ -507,7 +622,7 @@
     function startGame() {
         resize();
         score = 0;
-        speed = 220;
+        speed = LIVE_CONFIG.baseSpeed;
         spawnTimer = 0;
         multiplier = 1;
         boostTimer = 0;
@@ -535,11 +650,13 @@
 
         playTone(520, 'triangle', 0.12, 0.08);
         state = 'PLAYING';
+        cgGameplayStart();
         startMusic();
     }
 
     function gameOver(reason) {
         state = 'GAMEOVER';
+        cgGameplayStop();
         stopMusic();
         playTone(140, 'sawtooth', 0.28, 0.12);
         shake = 14;
@@ -549,13 +666,12 @@
         milestoneBox.classList.add('hidden');
 
         const isNew = score > bestScore && score > 0;
+        if (isNew) cgHappytime();
         if (score > bestScore) {
             bestScore = score;
             try {
                 window.localStorage.setItem('sr_best', bestScore.toString());
-            } catch (err) {
-                // Ignore storage errors
-            }
+            } catch (err) {}
         }
 
         let rank = 'Rising Creator';
@@ -576,11 +692,14 @@
     }
 
     document.getElementById('btn-play').addEventListener('click', startGame);
-    document.getElementById('btn-retry').addEventListener('click', startGame);
+    document.getElementById('btn-retry').addEventListener('click', function() {
+        cgRequestMidgameAd(startGame);
+    });
 
     btnPause.addEventListener('click', function() {
         if (state === 'PLAYING') {
             state = 'PAUSED';
+            cgGameplayStop();
             stopMusic();
             screenPause.classList.remove('hidden');
         }
@@ -590,6 +709,7 @@
         if (state === 'PAUSED') {
             screenPause.classList.add('hidden');
             state = 'PLAYING';
+            cgGameplayStart();
             startMusic();
         }
     });
@@ -625,10 +745,14 @@
         const safeLane = lanes[hazards];
         if (safeLane !== undefined) {
             const roll = Math.random();
+            const crateCut = LIVE_CONFIG.crateSpawnChance;
+            const shieldCut = crateCut + LIVE_CONFIG.shieldSpawnChance;
+            const boostCut = shieldCut + LIVE_CONFIG.boostSpawnChance;
+
             let type = 'LIKE';
-            if (roll < 0.11) type = 'CRATE';
-            else if (roll < 0.20 && !shield) type = 'SHIELD';
-            else if (roll < 0.36) type = 'BOOST';
+            if (roll < crateCut) type = 'CRATE';
+            else if (roll < shieldCut && !shield) type = 'SHIELD';
+            else if (roll < boostCut) type = 'BOOST';
 
             items.push({
                 lane: safeLane,
@@ -646,12 +770,12 @@
         burst(x, y, '#fbbf24', 22);
         const r = Math.random();
         if (r < 0.35) {
-            const bonus = 50000 * multiplier;
+            const bonus = LIVE_CONFIG.crateJackpot * multiplier;
             score += bonus;
             addPopup(x, y - 10, '📦 JACKPOT +' + fmt(bonus) + '!', '#fbbf24');
         } else if (r < 0.7) {
-            magnetTimer = 8;
-            addPopup(x, y - 10, '🧲 SUB MAGNET (8s)!', '#38bdf8');
+            magnetTimer = LIVE_CONFIG.magnetDuration;
+            addPopup(x, y - 10, '🧲 SUB MAGNET (' + Math.round(LIVE_CONFIG.magnetDuration) + 's)!', '#38bdf8');
         } else {
             shield = true;
             addPopup(x, y - 10, '🛡️ VERIFIED SHIELD!', '#34d399');
@@ -675,8 +799,8 @@
 
         try {
             if (state === 'PLAYING') {
-                speed = 220 + Math.min(230, score / 6500);
-                score += Math.floor(dt * 2700 * multiplier);
+                speed = LIVE_CONFIG.baseSpeed + Math.min(LIVE_CONFIG.maxBonusSpeed, score / 6500);
+                score += Math.floor(dt * LIVE_CONFIG.passiveViewsPerSec * multiplier);
                 scoreText.textContent = fmt(score);
                 bestMini.textContent = fmt(Math.max(score, bestScore));
 
@@ -697,6 +821,7 @@
 
                 if (score >= target.views && plaqueIdx < plaques.length - 1) {
                     plaqueIdx++;
+                    cgHappytime();
                     playTone(660, 'triangle', 0.2, 0.1);
                     addPopup(width / 2, height * 0.36, '🎉 ' + target.rank.toUpperCase() + '!', '#fbbf24');
                     burst(player.x, player.y - 30, '#fbbf24', 20);
@@ -708,7 +833,7 @@
                 if (shake > 0) shake = Math.max(0, shake - dt * 40);
 
                 spawnTimer += dt;
-                const interval = Math.max(0.7, 1.15 - (speed - 220) / 700);
+                const interval = Math.max(0.7, 1.15 - (speed - LIVE_CONFIG.baseSpeed) / 700);
                 if (spawnTimer >= interval) {
                     spawnTimer = 0;
                     spawnWave();
@@ -730,7 +855,7 @@
                         if (it.type === 'LIKE') {
                             hypeCombo++;
                             hypeMult = Math.min(5, 1 + Math.floor(hypeCombo / 4));
-                            const gain = 10000 * multiplier * hypeMult;
+                            const gain = LIVE_CONFIG.likeViews * multiplier * hypeMult;
                             score += gain;
                             playTone(440 + Math.min(400, hypeCombo * 25), 'sine', 0.08, 0.07);
                             burst(it.x, it.y, '#38bdf8', 12);
@@ -741,7 +866,7 @@
                             }
                         } else if (it.type === 'BOOST') {
                             multiplier = 2;
-                            boostTimer = 7.5;
+                            boostTimer = LIVE_CONFIG.viralBoostDuration;
                             boostPill.classList.remove('hidden');
                             playTone(620, 'triangle', 0.14, 0.09);
                             burst(it.x, it.y, '#fbbf24', 16);
@@ -927,9 +1052,7 @@
             }
 
             ctx.restore();
-        } catch (err) {
-            // Keep animation loop alive even if a transient error occurs
-        }
+        } catch (err) {}
 
         requestAnimationFrame(loop);
     }
@@ -937,10 +1060,9 @@
     document.getElementById('start-best').textContent = 'PERSONAL BEST: ' + fmt(bestScore) + ' VIEWS';
     bestMini.textContent = fmt(bestScore);
     resize();
+    fetchLiveOpsConfig();
     requestAnimationFrame(loop);
 })();
 </script>
 </body>
 </html>
-
-```
