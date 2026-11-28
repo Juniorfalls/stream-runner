@@ -1,0 +1,15 @@
+{
+"version": "1.0.0",
+"announcementBanner": "🔥 WEEKEND EVENT: 2X LIKE VIEWS ACTIVE!",
+"baseSpeed": 220,
+"maxBonusSpeed": 230,
+"passiveViewsPerSec": 2700,
+"likeViews": 10000,
+"closeCallBonus": 5000,
+"crateJackpot": 50000,
+"viralBoostDuration": 7.5,
+"magnetDuration": 8.0,
+"crateSpawnChance": 0.11,
+"shieldSpawnChance": 0.09,
+"boostSpawnChance": 0.16
+}
