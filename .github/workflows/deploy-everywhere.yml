@@ -1,0 +1,33 @@
+name: Auto-Deploy Stream Runner
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout latest game code
+        uses: actions/checkout@v4
+
+      # 1. Package clean ZIP for CrazyGames & YouTube Playables
+      - name: Build release ZIP bundle
+        run: zip -r stream-runner-build.zip index.html
+
+      # 2. Auto-push update directly to itch.io via Butler
+      - name: Push build to itch.io
+        uses: josephbmanley/butler-publish-itchio-action@v1
+        env:
+          BUTLER_CREDENTIALS: ${{ secrets.BUTLER_API_KEY }}
+          CHANNEL: html5
+          ITCH_GAME: stream-runner
+          ITCH_USER: tarikoboh
+          PACKAGE: stream-runner-build.zip
+
+      # 3. Attach ZIP to GitHub Releases for 1-click CrazyGames/YouTube upload
+      - name: Publish GitHub Release Artifact
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          files: stream-runner-build.zip
